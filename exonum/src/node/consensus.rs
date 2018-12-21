@@ -14,7 +14,7 @@
 
 use std::{collections::HashSet, error::Error};
 
-use blockchain::{Schema, Transaction};
+use blockchain::{Schema, Transaction, ExecutionError, ExecutionResult, Transfer};
 use crypto::{CryptoHash, Hash, PublicKey};
 use events::InternalRequest;
 use helpers::{Height, Round, ValidatorId};
@@ -540,11 +540,12 @@ impl NodeHandler {
             let err = format!("Received already processed transaction, hash {:?}", hash);
             return Err(err);
         }
-
+        // Add transaction intto pool and UTXO-pool
         let mut fork = self.blockchain.fork();
         {
             let mut schema = Schema::new(&mut fork);
-            schema.add_transaction_into_pool(msg);
+            schema.add_transaction_into_pool(msg.clone());
+            schema.add_transaction_into_utxo(msg);
         }
         self.blockchain
             .merge(fork.into_patch())
@@ -705,14 +706,64 @@ impl NodeHandler {
             let snapshot = self.blockchain.snapshot();
             let schema = Schema::new(&snapshot);
             let pool = schema.transactions_pool();
+            let transactions = schema.transactions();
             let pool_len = schema.transactions_pool_len();
+            let utxos = schema.unspend_transactions();
 
             info!("LEADER: pool = {}", pool_len);
 
             let round = self.state.round();
             let max_count = ::std::cmp::min(self.txs_block_limit() as usize, pool_len);
 
-            let txs: Vec<Hash> = pool.iter().take(max_count).collect();
+            let mut count = 0;
+            let mut for_delete: Vec<Hash> = Vec::new();
+
+            let mut tmp: Vec<Hash> = Vec::new();
+
+            // Select transactions from pool with available UTXO
+            for trx_hash in pool.iter() {
+                //println!("{:?}", trx_hash);
+                let raw_tx = transactions.get(&trx_hash).unwrap();
+                // Check transaction type
+                if raw_tx.message_type() == 0 {
+                    let tx: Transfer = Message::from_raw(raw_tx.clone()).unwrap();
+                    let hash = tx.tx_hash();
+                    if utxos.contains(&hash) {
+                        println!("{:?} contains", hash);
+                        count += 1;
+                        tmp.push(trx_hash);
+                    } else {
+                        println!("{:?} this hash was used. Deleting {:?} transaction from pool", hash, trx_hash);
+                        for_delete.push(trx_hash);
+                    }
+                } else {
+                    // No checking for Issue and CreateWallet transactions
+                    count += 1;
+                    tmp.push(trx_hash);
+                }
+                if count >= max_count {
+                    break;
+                }
+
+            }
+            // Commin new blockchain configuration.
+            let mut fork = self.blockchain.fork();
+            {
+                let mut schema = Schema::new(&mut fork);
+                for hash in &for_delete {
+                    schema.reject_transaction(&hash);
+                    schema.remove_used_output(&hash);
+                }
+
+            }
+            self.blockchain
+                .merge(fork.into_patch())
+                .expect("Unable to remove some transactions from pool.");
+
+            let txs = tmp.clone();
+
+            println!("{:?} --- want to commit", txs);
+
             let propose = Propose::new(
                 validator_id,
                 self.state.height(),

@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Cryptocurrency database schema.
+
 use exonum::{
-    crypto::{Hash, PublicKey}, storage::{Fork, ProofListIndex, ProofMapIndex, Snapshot},
+    crypto::{Hash, PublicKey},
+    storage::{Fork, ProofListIndex, ProofMapIndex, Snapshot},
 };
 
 use wallet::Wallet;
@@ -35,12 +38,12 @@ impl<T> CurrencySchema<T>
 where
     T: AsRef<dyn Snapshot>,
 {
-    /// Constructs schema from the database view.
+    /// Creates a new schema from the database view.
     pub fn new(view: T) -> Self {
         CurrencySchema { view }
     }
 
-    /// Returns `MerklePatriciaTable` with wallets.
+    /// Returns `ProofMapIndex` with wallets.
     pub fn wallets(&self) -> ProofMapIndex<&T, PublicKey, Wallet> {
         ProofMapIndex::new("cryptocurrency.wallets", &self.view)
     }
@@ -55,7 +58,7 @@ where
         self.wallets().get(pub_key)
     }
 
-    /// Returns state hash of service database.
+    /// Returns the state hash of cryptocurrency service.
     pub fn state_hash(&self) -> Vec<Hash> {
         vec![self.wallets().merkle_root()]
     }
@@ -63,7 +66,7 @@ where
 
 /// Implementation of mutable methods.
 impl<'a> CurrencySchema<&'a mut Fork> {
-    /// Returns mutable `MerklePatriciaTable` with wallets.
+    /// Returns mutable `ProofMapIndex` with wallets.
     pub fn wallets_mut(&mut self) -> ProofMapIndex<&mut Fork, PublicKey, Wallet> {
         ProofMapIndex::new("cryptocurrency.wallets", &mut self.view)
     }
@@ -79,13 +82,19 @@ impl<'a> CurrencySchema<&'a mut Fork> {
     /// Increase balance of the wallet and append new record to its history.
     ///
     /// Panics if there is no wallet with given public key.
-    pub fn increase_wallet_balance(&mut self, wallet: Wallet, amount: u64, transaction: &Hash) {
+    pub fn increase_wallet_balance(
+        &mut self,
+        wallet: Wallet,
+        amount: u64,
+        transaction: &Hash,
+        new: &[Hash],
+    ) {
         let wallet = {
             let mut history = self.wallet_history_mut(wallet.pub_key());
             history.push(*transaction);
             let history_hash = history.merkle_root();
             let balance = wallet.balance();
-            wallet.set_balance(balance + amount, &history_hash)
+            wallet.set_balance(balance + amount, &history_hash, new)
         };
         self.wallets_mut().put(wallet.pub_key(), wallet.clone());
     }
@@ -93,24 +102,43 @@ impl<'a> CurrencySchema<&'a mut Fork> {
     /// Decrease balance of the wallet and append new record to its history.
     ///
     /// Panics if there is no wallet with given public key.
-    pub fn decrease_wallet_balance(&mut self, wallet: Wallet, amount: u64, transaction: &Hash) {
+    pub fn decrease_wallet_balance(
+        &mut self,
+        wallet: Wallet,
+        amount: u64,
+        transaction: &Hash,
+        new: &[Hash],
+    ) {
         let wallet = {
             let mut history = self.wallet_history_mut(wallet.pub_key());
             history.push(*transaction);
             let history_hash = history.merkle_root();
             let balance = wallet.balance();
-            wallet.set_balance(balance - amount, &history_hash)
+            wallet.set_balance(balance - amount, &history_hash, new)
         };
         self.wallets_mut().put(wallet.pub_key(), wallet.clone());
     }
 
     /// Create new wallet and append first record to its history.
-    pub fn create_wallet(&mut self, key: &PublicKey, name: &str, transaction: &Hash) {
+    pub fn create_wallet(
+        &mut self,
+        key: &PublicKey,
+        name: &str,
+        transaction: &Hash,
+        used: &[Hash],
+    ) {
         let wallet = {
             let mut history = self.wallet_history_mut(key);
             history.push(*transaction);
             let history_hash = history.merkle_root();
-            Wallet::new(key, name, INITIAL_BALANCE, history.len(), &history_hash)
+            Wallet::new(
+                key,
+                name,
+                INITIAL_BALANCE,
+                history.len(),
+                &history_hash,
+                used,
+            )
         };
         self.wallets_mut().put(key, wallet);
     }

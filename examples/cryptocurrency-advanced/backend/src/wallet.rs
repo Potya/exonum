@@ -12,30 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Wallet.
+//! Cryptocurrency wallet.
 
 use exonum::crypto::{Hash, PublicKey};
 
 encoding_struct! {
     /// Wallet information stored in the database.
     struct Wallet {
+        /// `PublicKey` of the wallet.
         pub_key:            &PublicKey,
+        /// Name of the wallet.
         name:               &str,
+        /// Current balance of the wallet.
         balance:            u64,
+        /// Length of the transactions history.
         history_len:        u64,
+        /// `Hash` of the transactions history.
         history_hash:       &Hash,
+        // Slice for used transactions
+        used: &[Hash],
     }
 }
 
 impl Wallet {
     /// Returns a copy of this wallet with updated balance.
-    pub fn set_balance(self, balance: u64, history_hash: &Hash) -> Self {
+    pub fn set_balance(self, balance: u64, history_hash: &Hash, used: &[Hash]) -> Self {
         Self::new(
             self.pub_key(),
             self.name(),
             balance,
             self.history_len() + 1,
             history_hash,
+            used,
         )
     }
 }

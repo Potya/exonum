@@ -47,6 +47,7 @@ define_names!(
     PEERS_CACHE => "peers_cache";
     CONSENSUS_MESSAGES_CACHE => "consensus_messages_cache";
     CONSENSUS_ROUND => "consensus_round";
+    UNSPEND_TRANSACTIONS => "unspend_transactions";
 );
 
 encoding_struct! {
@@ -117,6 +118,11 @@ where
         // TODO: Change count to other method with O(1) complexity. (ECR-977)
         let count = pool.iter().count();
         count
+    }
+
+    /// Returns Unspend transactions outputs
+    pub fn unspend_transactions(&self) -> KeySetIndex<&T, Hash> {
+        KeySetIndex::new(UNSPEND_TRANSACTIONS, &self.view)
     }
 
     /// Returns a table that keeps the block height and transaction position inside the block for every
@@ -391,6 +397,13 @@ impl<'a> Schema<&'a mut Fork> {
         KeySetIndex::new(TRANSACTIONS_POOL, self.view)
     }
 
+    /// Mutable reference to the [`unspend_transactions`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.transactions_pool
+    pub fn unspend_transactions_mut(&mut self) -> KeySetIndex<&mut Fork, Hash> {
+        KeySetIndex::new(UNSPEND_TRANSACTIONS, self.view)
+    }
+
     /// Mutable reference to the [`transactions_locations`][1] index.
     ///
     /// [1]: struct.Schema.html#method.transactions_locations
@@ -515,9 +528,19 @@ impl<'a> Schema<&'a mut Fork> {
         self.transactions_mut().put(&tx.hash(), tx);
     }
 
+    /// Add transaction into UTXO-pool
+    pub fn add_transaction_into_utxo(&mut self, tx: RawMessage) {
+        self.unspend_transactions_mut().insert(tx.hash());
+    }
+
     /// Changes the transaction status from `in_pool`, to `committed`.
     pub(crate) fn commit_transaction(&mut self, hash: &Hash) {
         self.transactions_pool_mut().remove(hash)
+    }
+
+    /// Delete transaction from UTXO-pool
+    pub(crate) fn remove_used_output(&mut self, hash: &Hash) {
+        self.unspend_transactions_mut().remove(hash);
     }
 
     /// Removes transaction from the persistent pool.

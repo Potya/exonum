@@ -212,7 +212,7 @@ describe('Interaction with blockchain', () => {
     ]))
   })
 
-  it('should transfer funds', async () => {
+  /*it('should transfer funds', async () => {
     const keyPair = {
       publicKey: 'ba78f4566a075958770ffd514cde99ed56bdb349fd95464a0b3ee1fb2459c600',
       secretKey: '925e9a5787d97d720bf16adff5c6d3ebf81cf27b61a474e1cbc97f4f80dce4e0ba78f4566a075958770ffd514cde99ed56bdb349fd95464a0b3ee1fb2459c600'
@@ -274,5 +274,6 @@ describe('Interaction with blockchain', () => {
         'signature': '49cab16b383c9d8117fdf0bfed9bd1cc88f0638b5b50067084fbcdad64fcaf0b1240d7ff47c9009a6b3960b10bd882d362cae91a2753c2d68896a136601a8501'
       }
     ]))
-  })
+})*/
+
 })
