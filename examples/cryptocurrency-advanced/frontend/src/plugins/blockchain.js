@@ -9,6 +9,7 @@ const SERVICE_ID = 128
 const TX_TRANSFER_ID = 0
 const TX_ISSUE_ID = 1
 const TX_WALLET_ID = 2
+const MTX_TRANSFER_ID = 3
 
 const used = Exonum.newArray({
   type: Exonum.Hash
@@ -46,8 +47,29 @@ function TransferTransaction() {
       { name: 'tx_hash', type: Exonum.Hash },
       { name: 'from', type: Exonum.PublicKey },
       { name: 'to', type: Exonum.PublicKey },
-      { name: 'change', type: Exonum.Uint64 },
       { name: 'amount', type: Exonum.Uint64 },
+      { name: 'change', type: Exonum.Uint64 },
+      { name: 'seed', type: Exonum.Uint64 }
+    ]
+  })
+}
+
+function MultiTransferTransaction () {
+  return Exonum.newMessage({
+    protocol_version: PROTOCOL_VERSION,
+    service_id: SERVICE_ID,
+    message_id: MTX_TRANSFER_ID,
+    fields: [
+      { name: 'tx_hash1', type: Exonum.Hash },
+      { name: 'tx_hash2', type: Exonum.Hash },
+      { name: 'from1', type: Exonum.PublicKey },
+      { name: 'from2', type: Exonum.PublicKey },
+      { name: 'to1', type: Exonum.PublicKey },
+      { name: 'to2', type: Exonum.PublicKey },
+      { name: 'amount1', type: Exonum.Uint64 },
+      { name: 'amount2', type: Exonum.Uint64 },
+      { name: 'change1', type: Exonum.Uint64 },
+      { name: 'change2', type: Exonum.Uint64 },
       { name: 'seed', type: Exonum.Uint64 }
     ]
   })
@@ -87,6 +109,8 @@ function getTransaction(id) {
       return new IssueTransaction()
     case TX_WALLET_ID:
       return new CreateTransaction()
+    case MTX_TRANSFER_ID:
+      return new MultiTransferTransaction()
     default:
       throw new Error('Unknown transaction ID has been passed')
   }
@@ -100,6 +124,8 @@ function getOwner(transaction) {
       return transaction.body.pub_key
     case TX_WALLET_ID:
       return transaction.body.pub_key
+    case MTX_TRANSFER_ID:
+      return transaction.body.from1
     default:
       throw new Error('Unknown transaction ID has been passed')
   }
@@ -113,6 +139,27 @@ function parse(tx, from, amount) {
             return (parseInt(tx.amount, 10) - amount).toString()
         } else {
             throw new Error('Wrong Sender')
+        }
+    }
+}
+
+function multi_parse(tx, from, amount) {
+    if (tx.change1 == from) {
+        return (parseInt(tx.change1, 10) - amount).toString()
+    } else {
+        if (tx.change2 == from) {
+            return (parseInt(tx.change2, 10) - amount).toString()
+        }
+        else {
+            if (tx.to1 == from) {
+                return (parseInt(tx.amount1, 10) - amount).toString()
+            } else {
+                if (tx.to2 == from) {
+                    return (parseInt(tx.amount2, 10) - amount).toString()
+                } else {
+                    throw new Error('Wrong Sender')
+                }
+            }
         }
     }
 }
@@ -190,8 +237,8 @@ module.exports = {
           tx_hash: tx_hash,
           from: keyPair.publicKey,
           to: receiver,
-          change: change,
           amount: amountToTransfer,
+          change: change,
           seed: seed
         }
 
@@ -204,6 +251,88 @@ module.exports = {
         // Send transaction into blockchain
 
         //return hash
+        return { tx_hash:hash,
+                 send: transaction.send(TRANSACTION_URL, TRANSACTION_EXPLORER_URL, data, signature) }
+      },
+
+
+      multi_transfer(keyPair, tx_hash1, from1, receiver1, amountToTransfer1, tx_hash2, from2, receiver2, amountToTransfer2, seed, trx1, trx2) {
+        // Describe transaction
+        const transaction = new MultiTransferTransaction()
+
+        console.log("transfer js started")
+
+        const tx1 = trx1.body
+        const tx2 = trx2.body
+
+        var change1
+        var change2
+
+
+        if (trx1.message_id == 1) {
+            if (tx1.pub_key == from1) {
+                change1 = (parseInt(tx1.amount, 10) - amountToTransfer1).toString()
+            } else {
+                throw new Error('Wrong Sender')
+            }
+        }
+
+        if (trx2.message_id == 1) {
+            if (tx2.pub_key == from2) {
+                change2 = (parseInt(tx2.amount, 10) - amountToTransfer2).toString()
+            } else {
+                throw new Error('Wrong Sender')
+            }
+        }
+
+
+        if (trx1.message_id == 3) {
+            change1 = multi_parse(tx1, from1, amountToTransfer1)
+        }
+
+        if (trx2.message_id == 3) {
+            change2 = multi_parse(tx2, from2, amountToTransfer2)
+        }
+
+
+        if (trx1.message_id == 0) {
+            change1 = parse(tx1, from1, amountToTransfer1)
+        }
+
+        if (trx2.message_id == 0) {
+            change2 = parse(tx2, from2, amountToTransfer2)
+        }
+
+
+        /*console.log(tx)
+        console.log(typeof(parseInt(tx.amount, 10) - 1))
+        console.log(1)*/
+
+        // Transaction data
+        const data = {
+          tx_hash1: tx_hash1,
+          tx_hash2: tx_hash2,
+          from1: from1,
+          from2: from2,
+          to1: receiver1,
+          to2: receiver2,
+          amount1: amountToTransfer1,
+          amount2: amountToTransfer2,
+          change1: change1,
+          change2: change2,
+          seed: seed
+        }
+
+        // Sign transaction
+        const signature = transaction.sign(keyPair.secretKey, data)
+        transaction.signature = signature
+
+        const hash = transaction.hash(data)
+
+        // Send transaction into blockchain
+
+        //return hash
+        console.log("trx sending")
         return { tx_hash:hash,
                  send: transaction.send(TRANSACTION_URL, TRANSACTION_EXPLORER_URL, data, signature) }
       },

@@ -84,11 +84,10 @@ transactions! {
             from:    &PublicKey,
             /// `PublicKey` of receiver's wallet.
             to:      &PublicKey,
-            /// Amount of currcency in change after transaction.
-            change: u64,
             /// Amount of currency to transfer.
             amount:  u64,
-            /// amount loss
+            /// Amount of currcency in change after transaction.
+            change: u64,
             /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
             ///
             /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
@@ -114,11 +113,43 @@ transactions! {
             /// Name of the new wallet.
             name:    &str,
         }
+
+        struct MultiTransfer {
+            /// Hashes of used transaction.
+            tx_hash1: &Hash,
+            tx_hash2: &Hash,
+            /// `PublicKey`s of sender's wallets.
+            from1:    &PublicKey,
+            from2:    &PublicKey,
+            /// `PublicKey`s of receiver's wallets.
+            to1:      &PublicKey,
+            to2:      &PublicKey,
+            /// Amount of currency to transfer.
+            amount1:  u64,
+            amount2:  u64,
+            /// Amount of currcency in change after transaction.
+            change1: u64,
+            change2: u64,
+            /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
+            ///
+            /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
+            seed:    u64,
+        }
     }
 }
 // list of all transactions
 
 impl Transaction for Transfer {
+    fn verify(&self) -> bool {
+        true
+    }
+
+    fn execute(&self, fork: &mut Fork) -> ExecutionResult {
+        Ok(())
+    }
+}
+
+impl Transaction for MultiTransfer {
     fn verify(&self) -> bool {
         true
     }
@@ -528,6 +559,7 @@ impl Blockchain {
         schema.transaction_results_mut().put(&tx_hash, tx_result);
         let raw_tx = schema.transactions_mut().get(&tx_hash).unwrap().clone();
         schema.commit_transaction(&tx_hash);
+
         // Remove from UTXO-pool all used ouputs.
         if raw_tx.message_type() == 0 {
             let tx: Transfer = Message::from_raw(raw_tx.clone()).unwrap();
@@ -535,6 +567,16 @@ impl Blockchain {
             println!("{:?} deleting", hash);
             schema.remove_used_output(&hash);
         }
+        if raw_tx.message_type() == 3 {
+            let tx: MultiTransfer = Message::from_raw(raw_tx.clone()).unwrap();
+            let hash1 = tx.tx_hash1();
+            let hash2 = tx.tx_hash2();
+            println!("{:?} deleting", hash1);
+            println!("{:?} deleting", hash2);
+            schema.remove_used_output(&hash1);
+            schema.remove_used_output(&hash2);
+        }
+
         schema.block_transactions_mut(height).push(tx_hash);
         let location = TxLocation::new(height, index as u64);
         schema.transactions_locations_mut().put(&tx_hash, location);

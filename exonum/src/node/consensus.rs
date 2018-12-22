@@ -14,7 +14,7 @@
 
 use std::{collections::HashSet, error::Error};
 
-use blockchain::{Schema, Transaction, ExecutionError, ExecutionResult, Transfer};
+use blockchain::{Schema, Transaction, ExecutionError, ExecutionResult, Transfer, MultiTransfer};
 use crypto::{CryptoHash, Hash, PublicKey};
 use events::InternalRequest;
 use helpers::{Height, Round, ValidatorId};
@@ -736,7 +736,22 @@ impl NodeHandler {
                         println!("{:?} this hash was used. Deleting {:?} transaction from pool", hash, trx_hash);
                         for_delete.push(trx_hash);
                     }
-                } else {
+                }
+
+                if raw_tx.message_type() == 3 {
+                    let tx: MultiTransfer = Message::from_raw(raw_tx.clone()).unwrap();
+                    let hash1 = tx.tx_hash1();
+                    let hash2 = tx.tx_hash2();
+                    if utxos.contains(&hash1) && utxos.contains(&hash2) {
+                        println!("{:?} and {:?} contains", hash1, hash2);
+                        count += 1;
+                        tmp.push(trx_hash);
+                    } else {
+                        println!("{:?} or {:?} hash was used. Deleting {:?} transaction from pool", hash1, hash2, trx_hash);
+                        for_delete.push(trx_hash);
+                    }
+                }
+                if raw_tx.message_type() == 1 || raw_tx.message_type() == 2 {
                     // No checking for Issue and CreateWallet transactions
                     count += 1;
                     tmp.push(trx_hash);

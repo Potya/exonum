@@ -56,7 +56,7 @@
                         <strong v-text="transaction.hash"/>
                         <br>sender == change
                         <br>
-                        <strong v-numeral="transaction.body.loss"/> funds available
+                        <strong v-numeral="transaction.body.change"/> funds available
                       </span>
                       <span v-else-if="transaction.message_id === 0 && transaction.body.to === keyPair.publicKey">
                         <strong v-numeral="transaction.body.amount"/> funds received/available
@@ -64,6 +64,33 @@
                         <strong v-text="transaction.hash"/>
                         <br>reciever == to
                       </span>
+                      <span v-else-if="transaction.message_id === 3 && transaction.body.to1 === keyPair.publicKey">
+                        <strong v-numeral="transaction.body.amount1"/> funds received/available
+                        <br>
+                        <strong v-text="transaction.hash"/>
+                        <br>reciever == to
+                      </span>
+                      <span v-else-if="transaction.message_id === 3 && transaction.body.to2 === keyPair.publicKey">
+                        <strong v-numeral="transaction.body.amount2"/> funds received/available
+                        <br>
+                        <strong v-text="transaction.hash"/>
+                        <br>reciever == to
+                      </span>
+                      <span v-else-if="transaction.message_id === 3 && transaction.body.from1 === keyPair.publicKey">
+                        <strong v-numeral="transaction.body.amount2"/> funds sent
+                        <br>
+                        <strong v-text="transaction.hash"/>
+                        <br>sender == change
+                        <br>
+                        <strong v-numeral="transaction.body.change1"/> funds available
+                      </span>
+                      <span v-else-if="transaction.message_id === 3 && transaction.body.from2 === keyPair.publicKey">
+                        <strong v-numeral="transaction.body.amount2"/> funds sent
+                        <br>
+                        <strong v-text="transaction.hash"/>
+                        <br>sender == change
+                        <br>
+                        <strong v-numeral="transaction.body.change2"/> funds available
                       </span>
                     </router-link>
                   </div>
@@ -98,6 +125,9 @@
               <li class="nav-item">
                 <a class="nav-link active btn-primary" id="home-tab" data-toggle="tab" href="#home" role="tab" aria-controls="home" aria-selected="true">One input/output</a>
               </li>
+              <li class="nav-item">
+                <a class="nav-link btn-primary" id="profile-tab" data-toggle="tab" href="#profile" role="tab" aria-controls="profile" aria-selected="false">Two inputs/outputs</a>
+              </li>
             </ul>
             <div class="tab-content" id="myTabContent">
               <div class="tab-pane show active " id="home" role="tabpanel" aria-labelledby="home-tab">
@@ -129,6 +159,56 @@
                     </form>
                   </div>
               </div>
+              <div class="tab-pane" id="profile" role="tabpanel" aria-labelledby="profile-tab">
+                  <div class="card-header">Transfer funds</div>
+                  <div class="card-body">
+                    <form @submit.prevent="multi_transfer">
+                      <div class="form-group">
+                        <label>Transaction Hash:</label>
+                        <input v-model="tx_hash1" type="text" class="form-control" placeholder="Enter transaction hash" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Sender:</label>
+                        <input v-model="from1" type="text" class="form-control" placeholder="Enter public key" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Receiver:</label>
+                        <input v-model="receiver1" type="text" class="form-control" placeholder="Enter public key" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Amount:</label>
+                        <div class="input-group">
+                          <div class="input-group-prepend">
+                            <div class="input-group-text">$</div>
+                          </div>
+                          <input v-model="amountToTransfer1" type="number" class="form-control" placeholder="Enter amount" min="0" required>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label>Transaction Hash2:</label>
+                        <input v-model="tx_hash2" type="text" class="form-control" placeholder="Enter transaction hash" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Sender2:</label>
+                        <input v-model="from2" type="text" class="form-control" placeholder="Enter public key" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Receiver2:</label>
+                        <input v-model="receiver2" type="text" class="form-control" placeholder="Enter public key" required>
+                      </div>
+                      <div class="form-group">
+                        <label>Amount2:</label>
+                        <div class="input-group">
+                          <div class="input-group-prepend">
+                            <div class="input-group-text">$</div>
+                          </div>
+                          <input v-model="amountToTransfer2" type="number" class="form-control" placeholder="Enter amount" min="0" required>
+                        </div>
+                      </div>
+                      <button type="submit" class="btn btn-primary">Transfer funds</button>
+                    </form>
+                  </div>
+              </div>
             </div>
           </div>
         </div>
@@ -138,6 +218,7 @@
     <spinner :visible="isSpinnerVisible"/>
   </div>
 </template>
+
 
 <script>
   import { mapState } from 'vuex'
@@ -162,6 +243,14 @@
         receiver: '',
         from: '',
         amountToTransfer: '',
+        receiver1: '',
+        tx_hash1: '',
+        from1: '',
+        amountToTransfer1: '',
+        receiver2: '',
+        tx_hash2: '',
+        from2: '',
+        amountToTransfer2: '',
         isSpinnerVisible: false,
         transactions: [],
         variants: [
@@ -260,7 +349,63 @@
           this.isSpinnerVisible = false
           this.$notify('error', error.toString())
         }
+    },
+
+    async multi_transfer() {
+      if (!this.$validateHex(this.receiver1)) {
+        return this.$notify('error', 'Invalid public key is passed')
       }
+
+      if (!this.$validateHex(this.from1)) {
+        return this.$notify('error', 'Invalid public key is passed')
+      }
+
+      if (this.receiver1 === this.keyPair.publicKey) {
+        return this.$notify('error', 'Can not transfer funds to yourself')
+      }
+
+      if (this.receiver1 === this.receiver2) {
+        return this.$notify('error', 'Can not transfer funds to yourself')
+      }
+
+
+      this.isSpinnerVisible = true
+
+      const seed = this.$blockchain.generateSeed()
+
+      const trx1 =  await this.$blockchain.getTransaction(this.tx_hash1)
+      const content1 = trx1.content
+
+      const trx2 =  await this.$blockchain.getTransaction(this.tx_hash2)
+      const content2 = trx2.content
+
+
+      try {
+        if (this.keyPair.publicKey != this.from1) {
+            this.$notify('error', "Wrong sender")
+            this.isSpinnerVisible = false
+        } else {
+            const tmp = await this.$blockchain.multi_transfer(this.keyPair, this.tx_hash1, this.from1, this.receiver1, this.amountToTransfer1, this.tx_hash2, this.from2, this.receiver2, this.amountToTransfer2, seed, content1, content2)
+            console.log("transfer wallet ended")
+            setTimeout(async() => {
+                const pos1 = await this.$blockchain.getTransaction(tmp.tx_hash)
+                const data = await this.$blockchain.getWallet(this.keyPair.publicKey)
+                this.balance = data.wallet.balance
+                this.transactions = data.transactions
+                this.isSpinnerVisible = false
+                console.log(pos1)
+                if (pos1.status.type == 'success') {
+                    this.$notify('success', 'Transfer transaction has been written into the blockchain')
+                } else {
+                    this.$notify('error', "ERROR occured")
+                }
+            }, 2000)
+      }
+      } catch (error) {
+        this.isSpinnerVisible = false
+        this.$notify('error', error.toString())
+      }
+    },
 
 
     },

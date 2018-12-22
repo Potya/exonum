@@ -82,11 +82,10 @@ transactions! {
             from:    &PublicKey,
             /// `PublicKey` of receiver's wallet.
             to:      &PublicKey,
-            /// Amount of currcency in change after transaction.
-            change: u64,
             /// Amount of currency to transfer.
             amount:  u64,
-            /// amount loss
+            /// Amount of currcency in change after transaction.
+            change: u64,
             /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
             ///
             /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
@@ -111,6 +110,28 @@ transactions! {
             pub_key: &PublicKey,
             /// Name of the new wallet.
             name:    &str,
+        }
+
+        struct MultiTransfer {
+            /// Hashes of used transaction.
+            tx_hash1: &Hash,
+            tx_hash2: &Hash,
+            /// `PublicKey`s of sender's wallets.
+            from1:    &PublicKey,
+            from2:    &PublicKey,
+            /// `PublicKey`s of receiver's wallets.
+            to1:      &PublicKey,
+            to2:      &PublicKey,
+            /// Amount of currency to transfer.
+            amount1:  u64,
+            amount2:  u64,
+            /// Amount of currcency in change after transaction.
+            change1: u64,
+            change2: u64,
+            /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
+            ///
+            /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
+            seed:    u64,
         }
     }
 }
@@ -147,6 +168,73 @@ impl Transaction for Transfer {
 
         schema.decrease_wallet_balance(sender, amount, &hash, &used);
         schema.increase_wallet_balance(receiver.clone(), amount, &hash, &(receiver.used().to_vec()));
+
+        Ok(())
+    }
+}
+
+impl Transaction for MultiTransfer {
+    fn verify(&self) -> bool {
+
+        (self.from1() != self.to1()) && self.verify_signature(self.from1())
+    }
+
+    fn execute(&self, fork: &mut Fork) -> ExecutionResult {
+        let mut schema = CurrencySchema::new(fork);
+
+        println!(
+            "start execute"
+        );
+
+        let from1 = self.from1();
+        let from2 = self.from2();
+        let to1 = self.to1();
+        let to2 = self.to2();
+
+        let amount1 = self.amount1();
+        let amount2 = self.amount2();
+        let tx_hash1 = self.tx_hash1();
+        let tx_hash2 = self.tx_hash2();
+
+        let hash = self.hash();
+
+        let sender1 = schema.wallet(from1).ok_or(Error::SenderNotFound)?;
+        let sender2 = schema.wallet(from2).ok_or(Error::SenderNotFound)?;
+
+        let mut used1 = sender1.used().to_vec();
+
+        if used1.iter().any(|hash| hash == tx_hash1) {
+            Err(Error::UsedHash)?
+        }
+
+        used1.push(*tx_hash1);
+
+        let mut used2 = sender2.used().to_vec();
+
+        if used2.iter().any(|hash| hash == tx_hash2) {
+            Err(Error::UsedHash)?
+        }
+        used1.push(*tx_hash2);
+
+        let receiver1 = schema.wallet(to1).ok_or(Error::ReceiverNotFound)?;
+        let receiver2 = schema.wallet(to2).ok_or(Error::ReceiverNotFound)?;
+
+        if sender1.balance() < amount1 {
+            Err(Error::InsufficientCurrencyAmount)?
+        }
+
+        if sender2.balance() < amount2 {
+            Err(Error::InsufficientCurrencyAmount)?
+        }
+
+        schema.decrease_wallet_balance(sender1, amount1, &hash, &used1);
+        schema.decrease_wallet_balance(sender2, amount2, &hash, &used2);
+        schema.increase_wallet_balance(receiver1.clone(), amount1, &hash, &(receiver1.used().to_vec()));
+        schema.increase_wallet_balance(receiver2.clone(), amount2, &hash, &(receiver2.used().to_vec()));
+
+        println!(
+            "ended execute"
+        );
 
         Ok(())
     }
